@@ -85,7 +85,5 @@ task-api/
 ```
 
 ## Swagger UI
-```md
-## Swagger UI
 
 ![Swagger UI](docs/swagger.png)
