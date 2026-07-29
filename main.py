@@ -112,34 +112,45 @@ def health():
 # Get All Tasks
 # =====================================================
 
-@app.get(
-    "/tasks",
-    summary="Get All Tasks",
-    description="Returns the complete list of tasks."
-)
+@app.get("/tasks")
 def get_tasks():
-    return tasks
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM tasks")
+    rows = cursor.fetchall()
+
+    conn.close()
+
+    return [dict(row) for row in rows]
 
 
 # =====================================================
 # Get Task By ID
 # =====================================================
 
-@app.get(
-    "/tasks/{id}",
-    summary="Get Task By ID",
-    description="Returns a single task using its unique ID."
-)
-def get_task(id: int):
+@app.get("/tasks/{task_id}")
+def get_task(task_id: int):
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
 
-    for task in tasks:
-        if task["id"] == id:
-            return task
-
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"Task {id} not found"
+    cursor.execute(
+        "SELECT * FROM tasks WHERE id = ?",
+        (task_id,)
     )
+
+    row = cursor.fetchone()
+    conn.close()
+
+    if row is None:
+        return JSONResponse(
+            status_code=404,
+            content={"error": "Task not found"}
+        )
+
+    return dict(row)
 
 
 # =====================================================
