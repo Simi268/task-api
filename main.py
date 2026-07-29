@@ -157,29 +157,36 @@ def get_task(task_id: int):
 # Create Task
 # =====================================================
 
-@app.post(
-    "/tasks",
-    status_code=status.HTTP_201_CREATED,
-    summary="Create Task",
-    description="Creates a new task."
-)
+@app.post("/tasks", status_code=201)
 def create_task(task: TaskCreate):
 
-    if task.title.strip() == "":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Title cannot be empty"
+    if not task.title or not task.title.strip():
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Title is required"}
         )
 
-    new_task = {
-        "id": len(tasks) + 1,
-        "title": task.title,
-        "done": False
-    }
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
 
-    tasks.append(new_task)
+    cursor.execute(
+        "INSERT INTO tasks (title, done) VALUES (?, ?)",
+        (task.title, 0)
+    )
 
-    return new_task
+    task_id = cursor.lastrowid
+    conn.commit()
+
+    cursor.execute(
+        "SELECT * FROM tasks WHERE id = ?",
+        (task_id,)
+    )
+
+    row = cursor.fetchone()
+    conn.close()
+
+    return dict(row)
 
 
 # =====================================================
