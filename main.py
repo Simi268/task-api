@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Response
 from pydantic import BaseModel
 import sqlite3
 
@@ -193,55 +193,80 @@ def create_task(task: TaskCreate):
 # Update Task
 # =====================================================
 
-@app.put(
-    "/tasks/{id}",
-    summary="Update Task",
-    description="Updates the title and completion status of a task."
-)
-def update_task(id: int, updated_task: TaskUpdate):
+@app.put("/tasks/{task_id}")
+def update_task(task_id: int, task: TaskUpdate):
 
-    for task in tasks:
+    if not task.title or not task.title.strip():
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Title is required"}
+        )
 
-        if task["id"] == id:
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
 
-            if updated_task.title.strip() == "":
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Title cannot be empty"
-                )
-
-            task["title"] = updated_task.title
-            task["done"] = updated_task.done
-
-            return task
-
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"Task {id} not found"
+    # Check whether the task exists
+    cursor.execute(
+        "SELECT * FROM tasks WHERE id = ?",
+        (task_id,)
     )
+
+    if cursor.fetchone() is None:
+        conn.close()
+        return JSONResponse(
+            status_code=404,
+            content={"error": "Task not found"}
+        )
+
+    # Update the task
+    cursor.execute(
+        "UPDATE tasks SET title = ?, done = ? WHERE id = ?",
+        (task.title, int(task.done), task_id)
+    )
+
+    conn.commit()
+
+    # Fetch updated task
+    cursor.execute(
+        "SELECT * FROM tasks WHERE id = ?",
+        (task_id,)
+    )
+
+    updated_task = cursor.fetchone()
+    conn.close()
+
+    return dict(updated_task)
 
 
 # =====================================================
 # Delete Task
 # =====================================================
 
-@app.delete(
-    "/tasks/{id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete Task",
-    description="Deletes a task using its ID."
-)
-def delete_task(id: int):
+@app.delete("/tasks/{task_id}", status_code=204)
+def delete_task(task_id: int):
 
-    for task in tasks:
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
 
-        if task["id"] == id:
-
-            tasks.remove(task)
-
-            return
-
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"Task {id} not found"
+    cursor.execute(
+        "SELECT id FROM tasks WHERE id = ?",
+        (task_id,)
     )
+
+    if cursor.fetchone() is None:
+        conn.close()
+        return JSONResponse(
+            status_code=404,
+            content={"error": "Task not found"}
+        )
+
+    cursor.execute(
+        "DELETE FROM tasks WHERE id = ?",
+        (task_id,)
+    )
+
+    conn.commit()
+    conn.close()
+
+    return Response(status_code=204)
