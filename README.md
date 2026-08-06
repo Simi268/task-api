@@ -1,27 +1,65 @@
-# Task Management API
+# Task Management API with Supabase Authentication
 
-A RESTful CRUD API built using FastAPI and SQLite for the Backend AI Engineering assignment.
+A RESTful CRUD API built using **FastAPI**, **SQLite**, and **Supabase Authentication** for the Backend AI Engineering assignment.
 
-The API supports complete task management with persistent database storage. Tasks are stored in SQLite, so data survives application restarts.
+The API supports complete task management with persistent SQLite storage and secure JWT-based authentication using Supabase.
+
+---
 
 ## Features
 
-- Create, Read, Update, and Delete tasks
-- SQLite database persistence
-- Automatic database and table creation
-- Automatic seed data on first run
-- Input validation
-- Parameterized SQL queries
-- Proper HTTP status codes
-- Interactive Swagger UI documentation
+### Authentication
+
+- User Signup
+- User Login
+- JWT Authentication
+- Public Route
+- Protected Route
+- Reusable Authentication Dependency
+- Swagger JWT Authorization
+
+### Task Management
+
+- Create Tasks
+- Read All Tasks
+- Read Task by ID
+- Update Tasks
+- Delete Tasks
+
+---
 
 ## Tech Stack
 
 - Python
 - FastAPI
+- Supabase Auth
 - SQLite
 - Pydantic
 - Uvicorn
+
+---
+
+## Authentication
+
+This project uses **Supabase Authentication**.
+
+Authenticated users receive a JWT Access Token after login.
+
+Protected endpoints verify this JWT before returning data.
+
+Authentication flow:
+
+```
+Signup
+      ↓
+Login
+      ↓
+Access Token (JWT)
+      ↓
+Protected Routes
+```
+
+---
 
 ## Database
 
@@ -34,152 +72,193 @@ SQLite was chosen because it:
 - Requires minimal setup
 - Provides persistent storage across application restarts
 
-The database is stored locally as:
+Database file:
 
-`tasks.db`
+```
+tasks.db
+```
 
-The application automatically creates `tasks.db` and the `tasks` table when the server starts if they do not already exist.
+The application automatically creates the database and seeds sample tasks if it is empty.
 
-If the `tasks` table is empty, three example tasks are seeded automatically. The database file is ignored by Git so that each fresh clone creates its own database.
-
-### Tasks Table
-
-The `tasks` table contains:
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | INTEGER | Primary key |
-| `title` | TEXT | Task title |
-| `done` | INTEGER | Completion status (`0` or `1`) |
+---
 
 ## Installation
 
-Clone the repository:
+Clone the repository
 
 ```bash
 git clone https://github.com/Simi268/task-api.git
 cd task-api
 ```
 
-Create a virtual environment:
+Create virtual environment
 
 ```bash
 python -m venv venv
 ```
 
-Activate it:
+Activate
 
-**Windows**
+### Windows
 
 ```bash
 venv\Scripts\activate
 ```
 
-**Linux/macOS**
+### Linux/macOS
 
 ```bash
 source venv/bin/activate
 ```
 
-Install dependencies:
+Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Run the API
+---
 
-Start the server:
+## Environment Variables
 
-```bash
-uvicorn main:app --reload
+Create a `.env` file.
+
+```env
+SUPABASE_URL=your_supabase_project_url
+SUPABASE_KEY=your_supabase_publishable_key
 ```
 
-The database and `tasks` table will be created automatically when the application starts.
+---
+
+## Run the Project
+
+```bash
+uvicorn app.main:app --reload
+```
 
 Open:
 
-- API: `http://127.0.0.1:8000`
-- Swagger UI: `http://127.0.0.1:8000/docs`
+API
+
+```
+http://127.0.0.1:8000
+```
+
+Swagger
+
+```
+http://127.0.0.1:8000/docs
+```
+
+---
 
 ## API Endpoints
 
+### Authentication
+
 | Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/` | API Information |
-| GET | `/health` | Health Check |
-| GET | `/tasks` | Get all tasks |
-| GET | `/tasks/{id}` | Get task by ID |
-| POST | `/tasks` | Create a task |
-| PUT | `/tasks/{id}` | Update a task |
-| DELETE | `/tasks/{id}` | Delete a task |
+|---------|----------|-------------|
+| POST | `/auth/signup` | Register a new user |
+| POST | `/auth/login` | Login user |
 
-## SQL Exploration
+### Public
 
-The database was also explored directly using DB Browser for SQLite.
+| Method | Endpoint | Description |
+|---------|----------|-------------|
+| GET | `/public/info` | Public endpoint |
 
-Example query:
+### Protected
 
-```sql
-SELECT * FROM tasks WHERE done = 1;
-```
+| Method | Endpoint | Description |
+|---------|----------|-------------|
+| GET | `/protected/profile` | Requires JWT |
 
-This query returns all completed tasks, where `done` is stored as `1`.
+### Tasks
 
-Other SQL operations tested include:
+| Method | Endpoint |
+|---------|----------|
+| GET | `/tasks` |
+| GET | `/tasks/{id}` |
+| POST | `/tasks` |
+| PUT | `/tasks/{id}` |
+| DELETE | `/tasks/{id}` |
 
-```sql
-SELECT * FROM tasks;
-
-SELECT COUNT(*) FROM tasks;
-
-UPDATE tasks SET done = 1;
-
-DELETE FROM tasks WHERE done = 1;
-```
-
-Changes made directly in SQLite are reflected by the API because both the API and DB Browser operate on the same database file.
-
-## Database Screenshot
-
-The following screenshot shows the SQLite database and SQL queries explored using DB Browser for SQLite.
-
-![SQLite Database](docs/image.png)
-
-## Swagger UI
-
-![Swagger UI](docs/swagger.png)
-
-## Persistence
-
-Tasks are stored in SQLite rather than an in-memory Python list.
-
-This means tasks created or updated through the API remain available after the FastAPI server is stopped and restarted.
-
-The database is created automatically on a fresh project setup, so no manual database configuration is required.
+---
 
 ## Project Structure
 
 ```text
 task-api/
 │
-├── docs/
-│   ├── swagger.png
-│   └── image.png
+├── app/
+│   ├── __init__.py
+│   ├── auth.py
+│   ├── config.py
+│   ├── dependencies.py
+│   ├── routes.py
+│   ├── supabase_client.py
+│   └── main.py
 │
-├── main.py
-├── requirements.txt
-├── README.md
+├── docs/
+│   ├── image.png
+│   └── swagger.png
+│
+├── .env.example
 ├── .gitignore
-└── tasks.db          # Created automatically and ignored by Git
+├── README.md
+├── requirements.txt
+└── tasks.db
 ```
+
+---
+
+## Swagger UI
+
+Interactive API documentation is available at:
+
+```
+http://127.0.0.1:8000/docs
+```
+
+Swagger supports JWT authentication using the **Authorize** button.
+
+![Swagger UI](docs/swagger.png)
+
+---
+
+## Database Screenshot
+
+SQLite database preview:
+
+![SQLite Database](docs/image.png)
+
+---
 
 ## HTTP Status Codes
 
-The API uses appropriate HTTP status codes:
+| Code | Meaning |
+|------|---------|
+| 200 | OK |
+| 201 | Created |
+| 204 | No Content |
+| 400 | Bad Request |
+| 401 | Unauthorized |
+| 404 | Not Found |
 
-- `200 OK` — successful read or update
-- `201 Created` — task successfully created
-- `204 No Content` — task successfully deleted
-- `400 Bad Request` — invalid input
-- `404 Not Found` — task does not exist
+---
+
+## Future Improvements
+
+- Password Reset
+- Email Verification
+- Refresh Token Rotation
+- Task Ownership per User
+- Role-Based Authorization
+
+---
+
+## Author
+
+**Simi Kumari**
+
+Backend AI Engineering Assignment
