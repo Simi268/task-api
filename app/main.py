@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from app.routes import router as routes_router
 import sqlite3
 
 # Import Auth Router
@@ -30,6 +31,7 @@ app.include_router(
     tags=["Authentication"]
 )
 
+app.include_router(routes_router)
 # =====================================================
 # Pydantic Models
 # =====================================================
