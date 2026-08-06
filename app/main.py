@@ -1,25 +1,34 @@
-from fastapi import FastAPI, HTTPException, status, Response
+from fastapi import FastAPI, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import sqlite3
 
+# Import Auth Router
+from app.auth import router as auth_router
+
 app = FastAPI(
-    title="Task Management API",
+    title="Task Management API with Authentication",
     description="""
-A simple RESTful CRUD API built using FastAPI.
+A RESTful CRUD API with Supabase Authentication.
 
 ### Features
+- User Signup
+- User Login
+- Protected Routes
 - Create Tasks
-- Read All Tasks
-- Read Task by ID
+- Read Tasks
 - Update Tasks
 - Delete Tasks
-
-Built as part of the Backend AI Engineering Week 2 Assignment.
 """,
-    version="1.0.0",
-    
+    version="2.0.0",
 )
 
+# Register Authentication Routes
+app.include_router(
+    auth_router,
+    prefix="/auth",
+    tags=["Authentication"]
+)
 
 # =====================================================
 # Pydantic Models
@@ -74,21 +83,19 @@ def init_db():
 
 init_db()
 
+
 # =====================================================
 # Root Endpoint
 # =====================================================
 
-@app.get(
-    "/",
-    summary="API Information",
-    description="Returns basic information about the Task Management API."
-)
+@app.get("/", summary="API Information")
 def root():
     return {
         "name": "Task API",
-        "version": "1.0",
-        "endpoints": [
-            "/tasks"
+        "version": "2.0",
+        "features": [
+            "Authentication",
+            "CRUD Tasks"
         ]
     }
 
@@ -97,14 +104,21 @@ def root():
 # Health Check
 # =====================================================
 
-@app.get(
-    "/health",
-    summary="Health Check",
-    description="Checks whether the API server is running."
-)
+@app.get("/health")
 def health():
     return {
         "status": "ok"
+    }
+
+
+# =====================================================
+# Public Route
+# =====================================================
+
+@app.get("/public/info")
+def public_info():
+    return {
+        "message": "Welcome stranger! This info is public."
     }
 
 
@@ -132,16 +146,18 @@ def get_tasks():
 
 @app.get("/tasks/{task_id}")
 def get_task(task_id: int):
+
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT * FROM tasks WHERE id = ?",
+        "SELECT * FROM tasks WHERE id=?",
         (task_id,)
     )
 
     row = cursor.fetchone()
+
     conn.close()
 
     if row is None:
@@ -160,7 +176,7 @@ def get_task(task_id: int):
 @app.post("/tasks", status_code=201)
 def create_task(task: TaskCreate):
 
-    if not task.title or not task.title.strip():
+    if not task.title.strip():
         return JSONResponse(
             status_code=400,
             content={"error": "Title is required"}
@@ -171,19 +187,21 @@ def create_task(task: TaskCreate):
     cursor = conn.cursor()
 
     cursor.execute(
-        "INSERT INTO tasks (title, done) VALUES (?, ?)",
+        "INSERT INTO tasks(title,done) VALUES (?,?)",
         (task.title, 0)
     )
 
     task_id = cursor.lastrowid
+
     conn.commit()
 
     cursor.execute(
-        "SELECT * FROM tasks WHERE id = ?",
+        "SELECT * FROM tasks WHERE id=?",
         (task_id,)
     )
 
     row = cursor.fetchone()
+
     conn.close()
 
     return dict(row)
@@ -196,7 +214,7 @@ def create_task(task: TaskCreate):
 @app.put("/tasks/{task_id}")
 def update_task(task_id: int, task: TaskUpdate):
 
-    if not task.title or not task.title.strip():
+    if not task.title.strip():
         return JSONResponse(
             status_code=400,
             content={"error": "Title is required"}
@@ -206,37 +224,44 @@ def update_task(task_id: int, task: TaskUpdate):
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    # Check whether the task exists
     cursor.execute(
-        "SELECT * FROM tasks WHERE id = ?",
+        "SELECT * FROM tasks WHERE id=?",
         (task_id,)
     )
 
     if cursor.fetchone() is None:
         conn.close()
+
         return JSONResponse(
             status_code=404,
             content={"error": "Task not found"}
         )
 
-    # Update the task
     cursor.execute(
-        "UPDATE tasks SET title = ?, done = ? WHERE id = ?",
-        (task.title, int(task.done), task_id)
+        """
+        UPDATE tasks
+        SET title=?, done=?
+        WHERE id=?
+        """,
+        (
+            task.title,
+            int(task.done),
+            task_id
+        )
     )
 
     conn.commit()
 
-    # Fetch updated task
     cursor.execute(
-        "SELECT * FROM tasks WHERE id = ?",
+        "SELECT * FROM tasks WHERE id=?",
         (task_id,)
     )
 
-    updated_task = cursor.fetchone()
+    row = cursor.fetchone()
+
     conn.close()
 
-    return dict(updated_task)
+    return dict(row)
 
 
 # =====================================================
@@ -250,23 +275,26 @@ def delete_task(task_id: int):
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT id FROM tasks WHERE id = ?",
+        "SELECT id FROM tasks WHERE id=?",
         (task_id,)
     )
 
     if cursor.fetchone() is None:
+
         conn.close()
+
         return JSONResponse(
             status_code=404,
             content={"error": "Task not found"}
         )
 
     cursor.execute(
-        "DELETE FROM tasks WHERE id = ?",
+        "DELETE FROM tasks WHERE id=?",
         (task_id,)
     )
 
     conn.commit()
+
     conn.close()
 
     return Response(status_code=204)
