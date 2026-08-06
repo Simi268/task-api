@@ -2,6 +2,8 @@ from fastapi import FastAPI, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from app.routes import router as routes_router
+from fastapi.security import HTTPBearer
+from fastapi.openapi.utils import get_openapi
 import sqlite3
 
 # Import Auth Router
@@ -23,6 +25,37 @@ A RESTful CRUD API with Supabase Authentication.
 """,
     version="2.0.0",
 )
+bearer_scheme = HTTPBearer()
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+
+    openapi_schema["components"]["securitySchemes"] = {
+        "BearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT"
+        }
+    }
+
+    for path in openapi_schema["paths"].values():
+        for operation in path.values():
+            if operation.get("tags") != ["Authentication"]:
+                operation["security"] = [{"BearerAuth": []}]
+
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
 
 # Register Authentication Routes
 app.include_router(
