@@ -50,7 +50,7 @@ From the repository root:
 ```bash
 pip install requests beautifulsoup4 pydantic
 python scraper/src/main.py
----
+
 
 
 
