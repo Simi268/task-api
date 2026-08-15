@@ -50,29 +50,7 @@ From the repository root:
 ```bash
 pip install requests beautifulsoup4 pydantic
 python scraper/src/main.py
-
 ---
 
-## Project Structure
 
-```text
-scraper/
-│
-├── .gitignore
-├── README.md
-│
-├── cache/
-│   ├── catalogue-page-1.html
-│   ├── catalogue-page-2.html
-│   ├── catalogue-page-3.html
-│   └── books/
-│       └── <cached book pages>
-│
-├── output/
-│   ├── books.json
-│   ├── errors.json
-│   └── run-report.json
-│
-└── src/
-    └── main.py
 
