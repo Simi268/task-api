@@ -10,6 +10,7 @@ import requests
 from bs4 import BeautifulSoup
 from pydantic import BaseModel, HttpUrl, ValidationError
 
+import time
 
 # ============================================================
 # Configuration
@@ -31,6 +32,7 @@ USER_AGENT = (
 
 TIMEOUT = 10
 REQUEST_DELAY = 0.5
+MAX_RETRIES = 1
 
 
 # ============================================================
@@ -49,20 +51,38 @@ class BookRecord(BaseModel):
     fetched_at: str
 
 
+def create_run_stats():
+    return {
+        "start_time": datetime.now(timezone.utc).isoformat(),
+        "duration_seconds": 0,
+        "pages_fetched": 0,
+        "cache_hits": 0,
+        "valid_records": 0,
+        "invalid_records": 0,
+        "failed_pages": [],
+    }
+
 # ============================================================
 # Fetching and Caching
 # ============================================================
 
 def fetch_page(
     url: str,
-    cache_file: Path | None = None
+    cache_file: Path | None = None,
+    stats: dict | None = None,
 ) -> bytes:
     """
-    Fetch a page from the website or return its cached copy.
+    Fetch a page or return its cached copy.
+
+    Timeout and 5xx failures are retried once.
+    403 and 404 failures are not retried.
     """
 
     if cache_file and cache_file.exists():
         content = cache_file.read_bytes()
+
+        if stats is not None:
+            stats["cache_hits"] += 1
 
         print(
             f"CACHE HIT | {url} | "
@@ -75,42 +95,92 @@ def fetch_page(
         "User-Agent": USER_AGENT
     }
 
-    response = requests.get(
-        url,
-        headers=headers,
-        timeout=TIMEOUT,
-    )
+    attempts = 0
 
-    if response.status_code != 200:
-        raise RuntimeError(
-            f"FETCH FAILED | "
-            f"status={response.status_code} | "
-            f"url={url}"
-        )
+    while True:
+        attempts += 1
 
-    content = response.content
+        try:
+            response = requests.get(
+                url,
+                headers=headers,
+                timeout=TIMEOUT,
+            )
 
-    if cache_file:
-        cache_file.parent.mkdir(
-            parents=True,
-            exist_ok=True
-        )
+            if response.status_code == 200:
 
-        cache_file.write_bytes(content)
+                if stats is not None:
+                    stats["pages_fetched"] += 1
 
-    print(
-        f"FETCH | "
-        f"status={response.status_code} | "
-        f"size={len(content)} bytes | "
-        f"url={url}"
-    )
+                content = response.content
 
-    return content
+                if cache_file:
+                    cache_file.parent.mkdir(
+                        parents=True,
+                        exist_ok=True
+                    )
 
+                    cache_file.write_bytes(
+                        content
+                    )
 
-# ============================================================
-# Catalogue Discovery
-# ============================================================
+                print(
+                    f"FETCH | "
+                    f"status=200 | "
+                    f"size={len(content)} bytes | "
+                    f"url={url}"
+                )
+
+                return content
+
+            # Do not retry 403 or 404.
+            if response.status_code in (403, 404):
+                raise RuntimeError(
+                    f"FETCH FAILED | "
+                    f"status={response.status_code} | "
+                    f"url={url}"
+                )
+
+            # Retry server errors once.
+            if (
+                500 <= response.status_code < 600
+                and attempts <= MAX_RETRIES
+            ):
+                print(
+                    f"RETRY | "
+                    f"attempt={attempts} | "
+                    f"status={response.status_code} | "
+                    f"url={url}"
+                )
+
+                sleep(1)
+                continue
+
+            raise RuntimeError(
+                f"FETCH FAILED | "
+                f"status={response.status_code} | "
+                f"url={url}"
+            )
+
+        except requests.Timeout:
+
+            if attempts <= MAX_RETRIES:
+
+                print(
+                    f"RETRY | "
+                    f"attempt={attempts} | "
+                    f"timeout | "
+                    f"url={url}"
+                )
+
+                sleep(1)
+                continue
+
+            raise RuntimeError(
+                f"FETCH FAILED | "
+                f"timeout | "
+                f"url={url}"
+            )
 
 def extract_book_links(
     html: bytes,
@@ -146,7 +216,6 @@ def extract_book_links(
 
     return book_links
 
-
 def find_next_page(
     html: bytes,
     page_url: str
@@ -173,7 +242,9 @@ def find_next_page(
     return None
 
 
-def discover_books() -> list[tuple[str, str]]:
+def discover_books(
+    stats: dict
+) -> list[tuple[str, str]]:
     """
     Discover book URLs from the first three
     catalogue pages.
@@ -204,11 +275,11 @@ def discover_books() -> list[tuple[str, str]]:
             CACHE_DIR
             / f"catalogue-page-{catalogue_pages}.html"
         )
-
         html = fetch_page(
-            current_url,
-            cache_file
-        )
+    current_url,
+    cache_file,
+    stats
+)
 
         page_books = extract_book_links(
             html,
@@ -401,6 +472,7 @@ def extract_book_record(
 def fetch_book_details(
     book_url: str,
     source_page: str,
+    stats: dict,
 ) -> dict:
     """
     Fetch and extract one book's details.
@@ -428,11 +500,11 @@ def fetch_book_details(
     )
 
     from_cache = cache_file.exists()
-
     html = fetch_page(
-        book_url,
-        cache_file
-    )
+    book_url,
+    cache_file,
+    stats
+)
 
     # Delay only after an actual
     # network request.
@@ -601,6 +673,41 @@ def validate_and_store(
         f"{len(invalid_records)}"
     )
 
+def write_run_report(stats: dict):
+    """
+    Write the final run report to JSON.
+    """
+
+    OUTPUT_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    report_file = (
+        OUTPUT_DIR
+        / "run-report.json"
+    )
+
+    report_file.write_text(
+        json.dumps(
+            stats,
+            indent=2,
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    print(
+        "\n--- RUN REPORT ---"
+    )
+
+    print(
+        json.dumps(
+            stats,
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
 
 # ============================================================
 # Main Pipeline
@@ -608,18 +715,25 @@ def validate_and_store(
 
 def main():
 
-    # --------------------------------------------------------
+    start_time = time.perf_counter()
+
+    stats = create_run_stats()
+
+    records = []
+
+       # --------------------------------------------------------
     # Stage 2
     # Discover the first three catalogue pages.
     # --------------------------------------------------------
 
-    books = discover_books()
+    books = discover_books(stats)
 
-    records = []
 
     # --------------------------------------------------------
-    # Stage 3
-    # Fetch and extract all book details.
+    # Stage 3 + Stage 5
+    # Fetch and extract book details.
+    # Handle each page independently so one failure
+    # does not stop the entire run.
     # --------------------------------------------------------
 
     print(
@@ -640,14 +754,30 @@ def main():
             f"{book_url}"
         )
 
-        record = fetch_book_details(
-            book_url,
-            source_page,
-        )
+        try:
 
-        records.append(
-            record
-        )
+            record = fetch_book_details(
+                book_url,
+                source_page,
+                stats
+            )
+
+            records.append(record)
+
+        except Exception as exc:
+
+            print(
+                f"FAILED | "
+                f"url={book_url} | "
+                f"reason={exc}"
+            )
+
+            stats["failed_pages"].append(
+                {
+                    "url": book_url,
+                    "reason": str(exc),
+                }
+            )
 
     # --------------------------------------------------------
     # Stage 3 Checkpoint
@@ -681,9 +811,40 @@ def main():
     # Normalize, validate, and store.
     # --------------------------------------------------------
 
-    validate_and_store(
-        records
+    validate_and_store(records)
+
+    # Read the generated files to update statistics.
+    books_data = json.loads(
+        BOOKS_FILE.read_text(
+            encoding="utf-8"
+        )
     )
+
+    errors_data = json.loads(
+        ERRORS_FILE.read_text(
+            encoding="utf-8"
+        )
+    )
+
+    stats["valid_records"] = len(
+        books_data
+    )
+
+    stats["invalid_records"] = len(
+        errors_data
+    )
+
+    # --------------------------------------------------------
+    # Stage 5
+    # Generate run report.
+    # --------------------------------------------------------
+
+    stats["duration_seconds"] = round(
+        time.perf_counter() - start_time,
+        3
+    )
+
+    write_run_report(stats)
 
 
 # ============================================================
