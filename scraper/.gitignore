@@ -1,5 +1,13 @@
-tasks.db
-venv/
+# Local scraper cache
+cache/
+
+# Python
 __pycache__/
 *.pyc
+
+# Local environment
+venv/
 .env
+
+# Local database
+tasks.db
